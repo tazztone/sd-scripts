@@ -18,9 +18,14 @@ for %%f in ("%input_folder%\*.safetensors") do (
     set "filename=%%~nf"
     set "extension=%%~xf"
     set "new_filename=!filename!-r%new_rank%-%dyn_method%-%dyn_param:.=%!extension!"
-    echo Processing %%f...
-    
-    python networks\resize_lora.py --model "%%f" --new_rank %new_rank% --save_to "%output_folder%\!new_filename!" --dynamic_method %dyn_method% --dynamic_param %dyn_param% --device cuda --save_precision fp16 --verbose
+    set "log_filename=!filename!-r%new_rank%-%dyn_method%-%dyn_param:.=%.txt"
+
+    (
+        echo --- Resizing %%f ---
+        python networks\resize_lora.py --model "%%f" --new_rank %new_rank% --save_to "%output_folder%\!new_filename!" --dynamic_method %dyn_method% --dynamic_param %dyn_param% --device cuda --save_precision fp16 --verbose
+    ) > "%output_folder%\!log_filename!" 2>&1
+
+    echo Processed %%f, log saved to %output_folder%\!log_filename!
 )
 
 echo.

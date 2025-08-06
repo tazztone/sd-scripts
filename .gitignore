@@ -6,3 +6,4 @@ venv
 build
 .vscode
 wandb
+_BAT/input/t4zz-v23.safetensors

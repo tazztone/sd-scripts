@@ -1,39 +1,37 @@
+# _BAT/run_batch_resize_on_modal.py
 import modal
 import subprocess
 import sys
 from pathlib import Path
 
-# Define the environment for the Modal app
-# This clones the repository and installs dependencies.
+# --- Configuration ---
+# Your forked repository is now the source of truth.
+GIT_REPO_URL = "https://github.com/tazztone/sd-scripts.git"
+REPO_DIR = Path("/root/sd-scripts")
+
+# Define the environment for the Modal app.
+# It now clones your specific fork of the repository.
 image = (
     modal.Image.debian_slim(python_version="3.10")
     .apt_install("git")
     .run_commands(
-        "git clone https://github.com/kohya-ss/sd-scripts.git /root/sd-scripts",
-        "cd /root/sd-scripts && pip install -r requirements.txt",
-        # Note: numpy<2.0 is specified in your setup.bat and might be important
+        f"git clone {GIT_REPO_URL} {REPO_DIR}",
+        f"cd {REPO_DIR} && pip install -r requirements.txt",
+        # Keeping specific dependencies from your setup for consistency
         "pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118 'numpy<2.0'",
     )
 )
 
 # Create a Modal App with the defined image
-app = modal.App("kohya-ss-batch-processor", image=image)
+app = modal.App("tazztone-sd-scripts-processor", image=image)
 
-# Create a persistent Volume for storing models and scripts
-# This volume is structured with input, output, and temp directories
+# Create a persistent Volume for storing models.
+# The structure (input, output, temp) remains the same.
 volume = modal.Volume.from_name("lora-models-batch", create_if_missing=True)
 BASE_DIR = "/models"
 INPUT_DIR = Path(BASE_DIR, "input")
 OUTPUT_DIR = Path(BASE_DIR, "output")
 TEMP_DIR = Path(BASE_DIR, "temp")
-
-# Mount your local convert_flux_lora.py file into the container
-# Make sure it's in the same directory as this launcher script.
-mounts = [
-    modal.Mount.from_local_file(
-        "convert_flux_lora.py", remote_path="/root/convert_flux_lora.py"
-    )
-]
 
 def run_command(command: list[str]):
     """Helper function to run and stream output from a subprocess."""
@@ -43,7 +41,8 @@ def run_command(command: list[str]):
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
-        encoding='utf-8'
+        encoding='utf-8',
+        cwd=REPO_DIR  # Run commands from the repo's root directory
     )
     for line in iter(process.stdout.readline, ''):
         print(line, end='')
@@ -55,13 +54,11 @@ def run_command(command: list[str]):
 @app.function(
     gpu="any",
     volumes={BASE_DIR: volume},
-    mounts=mounts,
-    timeout=1800  # Set a 30-minute timeout for batch processing
+    timeout=1800  # 30-minute timeout for batch processing
 )
 def process_loras_batch():
     """
-    Runs the full convert-and-resize batch process on all models
-    in the volume's /input directory.
+    Runs the full convert-and-resize batch process using scripts from your repository.
     """
     # --- Configuration from your .bat file ---
     new_rank = 16
@@ -71,7 +68,7 @@ def process_loras_batch():
 
     print("--- Starting batch processing ---")
     
-    # Ensure directories exist
+    # Ensure remote directories exist in the volume
     INPUT_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -83,35 +80,35 @@ def process_loras_batch():
 
     print(f"Found {len(input_files)} models to process.")
 
+    # Define paths to the scripts within the cloned repository
+    convert_script_path = REPO_DIR / "_BAT" / "convert_flux_lora.py"
+    resize_script_path = REPO_DIR / "networks" / "resize_lora.py"
+
     for src_path in input_files:
         filename_stem = src_path.stem
         extension = src_path.suffix
-
         print(f"\n--- Processing: {src_path.name} ---")
 
         # 1. Convert LoRA
-        print("Step 1: Converting LoRA from ai-toolkit to sd-scripts format...")
+        print("Step 1: Converting LoRA...")
         temp_filename = f"{filename_stem}-converted{extension}"
         temp_path = TEMP_DIR / temp_filename
         
         convert_command = [
-            "python", "/root/convert_flux_lora.py",
-            "--src", "ai-toolkit",
-            "--dst", "sd-scripts",
-            "--src_path", str(src_path),
-            "--dst_path", str(temp_path),
+            "python", str(convert_script_path),
+            "--src", "ai-toolkit", "--dst", "sd-scripts",
+            "--src_path", str(src_path), "--dst_path", str(temp_path),
         ]
         run_command(convert_command)
 
         # 2. Resize LoRA
         print(f"Step 2: Resizing '{temp_filename}'...")
-        # Recreate the output filename from your .bat script
         param_str = str(dyn_param).replace('.', '')
         new_filename = f"{filename_stem}-r{new_rank}-{dyn_method}-{param_str}{extension}"
         output_path = OUTPUT_DIR / new_filename
 
         resize_command = [
-            "python", "/root/sd-scripts/networks/resize_lora.py",
+            "python", str(resize_script_path),
             "--model", str(temp_path),
             "--new_rank", str(new_rank),
             "--save_to", str(output_path),
@@ -141,4 +138,3 @@ def main():
     """
     print("Calling remote function to process all LoRAs in the volume's '/input' directory.")
     process_loras_batch.remote()
-

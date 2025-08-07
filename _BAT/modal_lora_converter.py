@@ -14,19 +14,6 @@ logging.basicConfig(level=logging.INFO)
 # Note: Some packages in requirements.txt might need specific handling or might not be compatible with Modal's environment.
 # We'll start with a general approach and refine if errors occur.
 
-# Read requirements.txt to get the list of packages locally
-# This runs on your local machine before the Modal image is built
-local_requirements_path = Path("requirements.txt") # Assuming requirements.txt is in the project root
-if not local_requirements_path.exists():
-    # If the script is run from _BAT, then requirements.txt is one level up
-    local_requirements_path = Path(__file__).parent.parent / "requirements.txt"
-
-if not local_requirements_path.exists():
-    raise FileNotFoundError(f"requirements.txt not found at {local_requirements_path}")
-
-with open(local_requirements_path, "r") as f:
-    pip_packages = [line.strip() for line in f if line.strip() and not line.startswith("#") and not line.startswith("-e")]
-
 # Define the Modal image
 image = (
     modal.Image.debian_slim(python_version="3.10")
@@ -39,7 +26,28 @@ image = (
         "xformers==0.0.23.post1",
         extra_index_url="https://download.pytorch.org/whl/cu118",
     )
-    .pip_install(pip_packages)
+    .pip_install(
+        "numpy<2.0",
+        "accelerate==0.30.0",
+        "transformers==4.44.0",
+        "diffusers[torch]==0.25.0",
+        "ftfy==6.1.1",
+        "opencv-python==4.8.1.78",
+        "einops==0.7.0",
+        "pytorch-lightning==1.9.0",
+        "bitsandbytes==0.44.0",
+        "prodigyopt==1.0",
+        "lion-pytorch==0.0.6",
+        "tensorboard",
+        "safetensors==0.4.2",
+        "altair==4.2.2",
+        "easygui==0.98.3",
+        "toml==0.10.2",
+        "voluptuous==0.13.1",
+        "huggingface-hub==0.24.5",
+        "imagesize==1.4.1",
+        "rich==13.7.0",
+    )
     .add_local_dir("c:/_coding/sd-scripts", "/sd-scripts", ignore=["venv/**", "__pycache__/**", ".git/**", "bitsandbytes_windows/**", "library.egg-info/**"]) # Add the entire project directory, excluding venv and pycache
 )
 

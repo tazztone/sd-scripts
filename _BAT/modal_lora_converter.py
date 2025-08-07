@@ -14,21 +14,33 @@ logging.basicConfig(level=logging.INFO)
 # Note: Some packages in requirements.txt might need specific handling or might not be compatible with Modal's environment.
 # We'll start with a general approach and refine if errors occur.
 
-# Read requirements.txt to get the list of packages
-def get_pip_packages():
-    with open("requirements.txt", "r") as f:
-        packages = [line.strip() for line in f if line.strip() and not line.startswith("#")]
-    return packages
+# Read requirements.txt to get the list of packages locally
+# This runs on your local machine before the Modal image is built
+local_requirements_path = Path("requirements.txt") # Assuming requirements.txt is in the project root
+if not local_requirements_path.exists():
+    # If the script is run from _BAT, then requirements.txt is one level up
+    local_requirements_path = Path(__file__).parent.parent / "requirements.txt"
 
-# Filter out editable installs like '-e .'
-pip_packages = [p for p in get_pip_packages() if not p.startswith("-e")]
+if not local_requirements_path.exists():
+    raise FileNotFoundError(f"requirements.txt not found at {local_requirements_path}")
+
+with open(local_requirements_path, "r") as f:
+    pip_packages = [line.strip() for line in f if line.strip() and not line.startswith("#") and not line.startswith("-e")]
 
 # Define the Modal image
 image = (
-    modal.Image.from_registry("python:3.10-slim-buster")
-    .pip_install(pip_packages)
+    modal.Image.debian_slim(python_version="3.10")
     .apt_install("git") # Assuming git might be needed for some packages or operations
-    .add_local_dir("c:/_coding/sd-scripts", "/sd-scripts", exclude=["venv/**", "__pycache__/**", ".git/**", "bitsandbytes_windows/**", "library.egg-info/**"]) # Add the entire project directory, excluding venv and pycache
+    .pip_install(
+        "torch==2.1.2",
+        extra_index_url="https://download.pytorch.org/whl/cu118",
+    )
+    .pip_install(
+        "xformers==0.0.23.post1",
+        extra_index_url="https://download.pytorch.org/whl/cu118",
+    )
+    .pip_install(pip_packages)
+    .add_local_dir("c:/_coding/sd-scripts", "/sd-scripts", ignore=["venv/**", "__pycache__/**", ".git/**", "bitsandbytes_windows/**", "library.egg-info/**"]) # Add the entire project directory, excluding venv and pycache
 )
 
 app = modal.App("lora-converter")

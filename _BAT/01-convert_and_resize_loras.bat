@@ -4,7 +4,7 @@ call .\venv\Scripts\activate.bat
 setlocal enabledelayedexpansion
 
 REM Configuration
-set "new_rank=16"
+set "new_rank=32"
 set "dyn_method=sv_fro"
 set "dyn_param=0.94"
 set "input_folder=_BAT\input"
